@@ -1,0 +1,10 @@
+[Unit]
+Description=Gather Tailscale metrics at regular interval
+Environment=TS_EXPORTER_MODE=generate
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Prometheus Tailscale Exporter
+Documentation=https://github.com/josh/tailscale_exporter
+Requires=tailscale_exporter.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/tailscale_exporter
+DynamicUser=true

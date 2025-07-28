@@ -1,0 +1,9 @@
+[Unit]
+Description=Prometheus Tailscale Exporter
+Environment=TS_EXPORTER_MODE=serve
+
+[Socket]
+ListenStream=9100
+
+[Install]
+WantedBy=sockets.target
