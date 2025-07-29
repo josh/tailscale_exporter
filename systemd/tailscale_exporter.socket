@@ -3,7 +3,7 @@ Description=Prometheus Tailscale Exporter
 Environment=TS_EXPORTER_MODE=serve
 
 [Socket]
-ListenStream=9100
+ListenStream=9824
 
 [Install]
 WantedBy=sockets.target

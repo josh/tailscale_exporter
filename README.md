@@ -57,20 +57,20 @@ tailscale_exporter serve [options]
 
 **Options:**
 
-- `-l, --listen` - Address to listen on (default: `:9100`)
+- `-l, --listen` - Address to listen on (default: `:9824`)
 - `-i, --interval` - Metrics collection interval (default: `15m`)
 - `--ts-tailnet` - Tailnet to query (default: `-` for your default tailnet)
 - `--ts-hostname` - Hostname for the exporter's Tailscale node (default: `tailscale_exporter`)
 - `-v, --verbose` - Enable verbose logging
 
-Metrics will be available at `http://localhost:9100/metrics`
+Metrics will be available at `http://localhost:9824/metrics`
 
 **Example:**
 
 ```sh
 # Run with API key authentication
 $ export TS_API_KEY=tskey-api-xxxxx
-$ tailscale_exporter serve --listen=:9100 --interval=5m
+$ tailscale_exporter serve --listen=:9824 --interval=5m
 
 # Run on custom port with verbose logging
 $ tailscale_exporter serve -l :8080 -v --ts-apikey=tskey-api-xxxxx
@@ -172,7 +172,7 @@ Add to your `prometheus.yml`:
 scrape_configs:
   - job_name: "tailscale"
     static_configs:
-      - targets: ["localhost:9100"]
+      - targets: ["localhost:9824"]
     scrape_interval: 60s
 ```
 

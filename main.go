@@ -68,7 +68,7 @@ type generateCommand struct {
 }
 
 type serveCommand struct {
-	Addr     string        `arg:"-l,--listen,env:TS_EXPORTER_LISTEN" default:":9100" placeholder:"ADDRESS:PORT"`
+	Addr     string        `arg:"-l,--listen,env:TS_EXPORTER_LISTEN" default:":9824" placeholder:"ADDRESS:PORT"`
 	Interval time.Duration `arg:"-i,--interval,env:TS_EXPORTER_INTERVAL" default:"15m" placeholder:"INTERVAL"`
 }
 
