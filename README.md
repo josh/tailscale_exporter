@@ -129,6 +129,10 @@ All CLI options can be configured via environment variables:
 - `TS_EXPORTER_PUSHGATEWAY_RETRIES` - Pushgateway retry count
 - `TS_EXPORTER_MODE` - Default subcommand (`serve` or `generate`)
 
+When no mode is provided, the exporter will automatically run in `serve`
+mode when `LISTEN_PID` is set or in `generate` mode when `TRIGGER_UNIT` is
+set. If neither is detected, it exits with an error.
+
 ## Credential Loading
 
 The exporter supports loading credentials from files or a credentials directory:

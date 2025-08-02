@@ -87,7 +87,16 @@ type mainCommand struct {
 
 func main() {
 	if len(os.Args) == 1 || strings.HasPrefix(os.Args[1], "-") {
-		if mode := os.Getenv("TS_EXPORTER_MODE"); mode != "" {
+		mode := os.Getenv("TS_EXPORTER_MODE")
+		if mode == "" {
+			switch {
+			case os.Getenv("LISTEN_PID") != "":
+				mode = "serve"
+			case os.Getenv("TRIGGER_UNIT") != "":
+				mode = "generate"
+			}
+		}
+		if mode != "" {
 			os.Args = append([]string{os.Args[0], mode}, os.Args[1:]...)
 		}
 	}
