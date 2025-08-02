@@ -153,10 +153,12 @@ func detectModeFromEnv() string {
 	}
 
 	if os.Getenv("LISTEN_FDS") != "" || os.Getenv("LISTEN_PID") != "" {
+		log.Println("Detected systemd socket activation")
 		return "serve"
 	}
 
 	if os.Getenv("TRIGGER_UNIT") != "" || os.Getenv("TRIGGER_PATH") != "" {
+		log.Println("Detected systemd timer activation")
 		return "generate"
 	}
 
@@ -343,7 +345,6 @@ func loadCredential(value *string) {
 
 	if strings.HasPrefix(*value, "cred:") {
 		if os.Getenv("CREDENTIALS") == "" {
-			// log.Printf("Error reading credential %s: CREDENTIALS environment variable not set", (*value)[5:])
 			*value = ""
 			return
 		}
@@ -351,7 +352,6 @@ func loadCredential(value *string) {
 		path := filepath.Join(os.Getenv("CREDENTIALS"), credName)
 		data, err := os.ReadFile(path)
 		if err != nil {
-			// log.Printf("Error reading credential %s from %s: %v", credName, path, err)
 			*value = ""
 			return
 		}
