@@ -87,7 +87,7 @@ type mainCommand struct {
 
 func main() {
 	if len(os.Args) == 1 || strings.HasPrefix(os.Args[1], "-") {
-		if mode := os.Getenv("TS_EXPORTER_MODE"); mode != "" {
+		if mode := detectModeFromEnv(); mode != "" {
 			os.Args = append([]string{os.Args[0], mode}, os.Args[1:]...)
 		}
 	}
@@ -145,6 +145,22 @@ func main() {
 		p.WriteHelp(os.Stdout)
 		os.Exit(1)
 	}
+}
+
+func detectModeFromEnv() string {
+	if os.Getenv("TS_EXPORTER_MODE") != "" {
+		return os.Getenv("TS_EXPORTER_MODE")
+	}
+
+	if os.Getenv("LISTEN_FDS") != "" || os.Getenv("LISTEN_PID") != "" {
+		return "serve"
+	}
+
+	if os.Getenv("TRIGGER_UNIT") != "" || os.Getenv("TRIGGER_PATH") != "" {
+		return "generate"
+	}
+
+	return ""
 }
 
 func runGenerate(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.Server, generateArgs *generateCommand) {
