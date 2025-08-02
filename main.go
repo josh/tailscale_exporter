@@ -352,13 +352,13 @@ func loadCredential(value *string, fallbackCredName string) {
 	}
 
 	if strings.HasPrefix(*value, "cred:") {
-		if os.Getenv("CREDENTIALS") == "" {
-			log.Printf("Error reading credential %s: CREDENTIALS environment variable not set", (*value)[5:])
+		if os.Getenv("CREDENTIALS_DIRECTORY") == "" {
+			log.Printf("Error reading credential %s: CREDENTIALS_DIRECTORY environment variable not set", (*value)[5:])
 			*value = ""
 			return
 		}
 		credName := (*value)[5:]
-		path := filepath.Join(os.Getenv("CREDENTIALS"), credName)
+		path := filepath.Join(os.Getenv("CREDENTIALS_DIRECTORY"), credName)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			log.Printf("Error reading credential %s from %s: %v", credName, path, err)
@@ -370,8 +370,8 @@ func loadCredential(value *string, fallbackCredName string) {
 		return
 	}
 
-	if os.Getenv("CREDENTIALS") != "" {
-		path := filepath.Join(os.Getenv("CREDENTIALS"), fallbackCredName)
+	if os.Getenv("CREDENTIALS_DIRECTORY") != "" {
+		path := filepath.Join(os.Getenv("CREDENTIALS_DIRECTORY"), fallbackCredName)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return

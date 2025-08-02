@@ -137,9 +137,9 @@ The exporter supports loading credentials from files or a credentials directory:
 # Load from file
 --ts-apikey=file:/path/to/api-key.txt
 
-# Load from credentials directory (requires CREDENTIALS env var)
-export CREDENTIALS=/etc/tailscale_exporter/credentials
---ts-apikey=cred:tskey-api  # loads from $CREDENTIALS/tskey-api
+# Load from credentials directory (requires CREDENTIALS_DIRECTORY env var)
+export CREDENTIALS_DIRECTORY=/etc/tailscale_exporter/credentials
+--ts-apikey=cred:tskey-api  # loads from $CREDENTIALS_DIRECTORY/tskey-api
 ```
 
 ## Installation & Deployment
