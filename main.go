@@ -248,6 +248,10 @@ func runServe(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.S
 }
 
 func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
+	if client == nil {
+		return fmt.Errorf("tailscale client not configured")
+	}
+
 	devices, err := client.Devices().List(ctx)
 	if err != nil {
 		return err
