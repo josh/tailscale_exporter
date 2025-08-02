@@ -166,6 +166,10 @@ func detectModeFromEnv() string {
 }
 
 func runGenerate(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.Server, generateArgs *generateCommand) {
+	if tsClient == nil {
+		log.Fatalf("tailscale api not configured")
+	}
+
 	if err := gatherMetrics(ctx, tsClient); err != nil {
 		log.Fatalf("Error fetching metrics: %v", err)
 	}
@@ -217,6 +221,10 @@ func runGenerate(ctx context.Context, tsClient *tailscale.Client, tsServer *tsne
 }
 
 func runServe(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.Server, serveArgs *serveCommand) {
+	if tsClient == nil {
+		log.Fatalf("tailscale api not configured")
+	}
+
 	go func() {
 		log.Printf("[%s] Updating Tailscale metrics", time.Now().Format(time.RFC3339))
 		if err := gatherMetrics(ctx, tsClient); err != nil {
@@ -267,7 +275,7 @@ func runServe(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.S
 
 func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
 	if client == nil {
-		return fmt.Errorf("tailscale client not configured")
+		return fmt.Errorf("missing tailscale client")
 	}
 
 	devices, err := client.Devices().List(ctx)
