@@ -73,10 +73,10 @@ type serveCommand struct {
 }
 
 type mainCommand struct {
-	TailscaleAPIKey      string           `arg:"--ts-apikey,env:TS_API_KEY" default:"cred:tskey-api" placeholder:"KEY"`
-	TailscaleAuthKey     string           `arg:"--ts-authkey,env:TS_AUTHKEY" default:"cred:tskey-auth" placeholder:"KEY"`
-	TailscaleOAuthID     string           `arg:"--ts-oauth-id,env:TS_OAUTH_ID" default:"cred:tskey-oauth-id" placeholder:"ID"`
-	TailscaleOAuthSecret string           `arg:"--ts-oauth-secret,env:TS_OAUTH_SECRET" default:"cred:tskey-oauth-secret" placeholder:"SECRET"`
+	TailscaleAPIKey      string           `arg:"--ts-apikey,env:TS_API_KEY" placeholder:"KEY"`
+	TailscaleAuthKey     string           `arg:"--ts-authkey,env:TS_AUTHKEY" placeholder:"KEY"`
+	TailscaleOAuthID     string           `arg:"--ts-oauth-id,env:TS_OAUTH_ID" placeholder:"ID"`
+	TailscaleOAuthSecret string           `arg:"--ts-oauth-secret,env:TS_OAUTH_SECRET" placeholder:"SECRET"`
 	TailscaleTailnet     string           `arg:"--ts-tailnet,env:TS_TAILNET" default:"-" placeholder:"TAILNET"`
 	TailscaleHostname    string           `arg:"--ts-hostname,env:TS_HOSTNAME" default:"tailscale_exporter" placeholder:"HOSTNAME"`
 	Verbose              bool             `arg:"-v,--verbose,env:TS_EXPORTER_VERBOSE" help:"Enable verbose logging"`
@@ -102,10 +102,10 @@ func main() {
 
 	ctx := context.Background()
 
-	loadCredential(&args.TailscaleAPIKey)
-	loadCredential(&args.TailscaleAuthKey)
-	loadCredential(&args.TailscaleOAuthID)
-	loadCredential(&args.TailscaleOAuthSecret)
+	loadCredential(&args.TailscaleAPIKey, "tskey-api")
+	loadCredential(&args.TailscaleAuthKey, "tskey-auth")
+	loadCredential(&args.TailscaleOAuthID, "tskey-oauth-id")
+	loadCredential(&args.TailscaleOAuthSecret, "tskey-oauth-secret")
 
 	var tsClient *tailscale.Client
 	if args.TailscaleAPIKey != "" {
@@ -335,7 +335,7 @@ func writeToStdout(reg *prometheus.Registry) error {
 	return nil
 }
 
-func loadCredential(value *string) {
+func loadCredential(value *string, fallbackCredName string) {
 	if value == nil || *value == "" {
 		return
 	}
@@ -353,6 +353,7 @@ func loadCredential(value *string) {
 
 	if strings.HasPrefix(*value, "cred:") {
 		if os.Getenv("CREDENTIALS") == "" {
+			log.Printf("Error reading credential %s: CREDENTIALS environment variable not set", (*value)[5:])
 			*value = ""
 			return
 		}
@@ -360,10 +361,22 @@ func loadCredential(value *string) {
 		path := filepath.Join(os.Getenv("CREDENTIALS"), credName)
 		data, err := os.ReadFile(path)
 		if err != nil {
+			log.Printf("Error reading credential %s from %s: %v", credName, path, err)
 			*value = ""
 			return
 		}
 		log.Printf("Loaded credential %s from %s", credName, path)
+		*value = strings.TrimSpace(string(data))
+		return
+	}
+
+	if os.Getenv("CREDENTIALS") != "" {
+		path := filepath.Join(os.Getenv("CREDENTIALS"), fallbackCredName)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return
+		}
+		log.Printf("Loaded credential %s from %s", fallbackCredName, path)
 		*value = strings.TrimSpace(string(data))
 		return
 	}
