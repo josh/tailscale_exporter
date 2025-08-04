@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -78,10 +77,18 @@ func main() {
 
 	ctx := context.Background()
 
-	loadCredential(&args.TailscaleAPIKey, "tskey-api")
-	loadCredential(&args.TailscaleAuthKey, "tskey-auth")
-	loadCredential(&args.TailscaleOAuthID, "tskey-oauth-id")
-	loadCredential(&args.TailscaleOAuthSecret, "tskey-oauth-secret")
+	if args.TailscaleAPIKey == "" {
+		args.TailscaleAPIKey = getTailscaleAPIKeyToken()
+	}
+	if args.TailscaleAuthKey == "" {
+		args.TailscaleAuthKey = getTailscaleAuthKeyToken()
+	}
+	if args.TailscaleOAuthID == "" {
+		args.TailscaleOAuthID = getTailscaleOAuthIDToken()
+	}
+	if args.TailscaleOAuthSecret == "" {
+		args.TailscaleOAuthSecret = getTailscaleOAuthSecretToken()
+	}
 
 	var tsClient *tailscale.Client
 	if args.TailscaleAPIKey != "" {
@@ -165,51 +172,59 @@ func detectModeFromEnv() string {
 	return ""
 }
 
-func loadCredential(value *string, fallbackCredName string) {
-	if value == nil || *value == "" {
-		return
+func readSystemdCredential(names ...string) string {
+	credsDir := os.Getenv("CREDENTIALS_DIRECTORY")
+	if credsDir == "" {
+		return ""
 	}
 
-	if strings.HasPrefix(*value, "file:") {
-		data, err := os.ReadFile((*value)[5:])
-		if err != nil {
-			log.Printf("Error reading file %s: %v", (*value)[5:], err)
-			*value = ""
-			return
+	for _, name := range names {
+		filepath := credsDir + "/" + name
+		if data, err := os.ReadFile(filepath); err == nil {
+			credential := strings.TrimSpace(string(data))
+			if credential != "" {
+				return credential
+			}
 		}
-		*value = strings.TrimSpace(string(data))
-		return
 	}
 
-	if strings.HasPrefix(*value, "cred:") {
-		if os.Getenv("CREDENTIALS_DIRECTORY") == "" {
-			log.Printf("Error reading credential %s: CREDENTIALS_DIRECTORY environment variable not set", (*value)[5:])
-			*value = ""
-			return
-		}
-		credName := (*value)[5:]
-		path := filepath.Join(os.Getenv("CREDENTIALS_DIRECTORY"), credName)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			log.Printf("Error reading credential %s from %s: %v", credName, path, err)
-			*value = ""
-			return
-		}
-		log.Printf("Loaded credential %s from %s", credName, path)
-		*value = strings.TrimSpace(string(data))
-		return
+	return ""
+}
+
+func getTailscaleAPIKeyToken() string {
+	if apiKey := os.Getenv("TS_API_KEY"); apiKey != "" {
+		return apiKey
+	} else if apiKey := os.Getenv("TS_APIKEY"); apiKey != "" {
+		return apiKey
 	}
 
-	if os.Getenv("CREDENTIALS_DIRECTORY") != "" {
-		path := filepath.Join(os.Getenv("CREDENTIALS_DIRECTORY"), fallbackCredName)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return
-		}
-		log.Printf("Loaded credential %s from %s", fallbackCredName, path)
-		*value = strings.TrimSpace(string(data))
-		return
+	return readSystemdCredential("TS_API_KEY", "TS_APIKEY", "ts-api-key", "ts-apikey")
+}
+
+func getTailscaleAuthKeyToken() string {
+	if authKey := os.Getenv("TS_AUTH_KEY"); authKey != "" {
+		return authKey
+	} else if authKey := os.Getenv("TS_AUTHKEY"); authKey != "" {
+		return authKey
 	}
+
+	return readSystemdCredential("TS_AUTH_KEY", "TS_AUTHKEY", "ts-auth-key", "ts-authkey")
+}
+
+func getTailscaleOAuthIDToken() string {
+	if oauthID := os.Getenv("TS_OAUTH_ID"); oauthID != "" {
+		return oauthID
+	}
+
+	return readSystemdCredential("TS_OAUTH_ID", "ts-oauth-id")
+}
+
+func getTailscaleOAuthSecretToken() string {
+	if oauthSecret := os.Getenv("TS_OAUTH_SECRET"); oauthSecret != "" {
+		return oauthSecret
+	}
+
+	return readSystemdCredential("TS_OAUTH_SECRET", "ts-oauth-secret")
 }
 
 func runGenerate(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.Server, generateArgs *generateCommand) {
