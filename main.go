@@ -61,30 +61,6 @@ func init() {
 	registry.MustRegister(deviceUpdateAvailable)
 }
 
-type generateCommand struct {
-	Output             string  `arg:"-o,--output,env:TS_EXPORTER_OUTPUT" placeholder:"FILE"`
-	PushgatewayURL     url.URL `arg:"-p,--pushgateway-url,env:TS_EXPORTER_PUSHGATEWAY_URL" placeholder:"URL"`
-	PushgatewayRetries int     `arg:"-r,--pushgateway-retries,env:TS_EXPORTER_PUSHGATEWAY_RETRIES" default:"1" placeholder:"RETRIES"`
-}
-
-type serveCommand struct {
-	Addr     string        `arg:"-l,--listen,env:TS_EXPORTER_LISTEN" default:":9824" placeholder:"ADDRESS:PORT"`
-	Interval time.Duration `arg:"-i,--interval,env:TS_EXPORTER_INTERVAL" default:"15m" placeholder:"INTERVAL"`
-}
-
-type mainCommand struct {
-	TailscaleAPIKey      string           `arg:"--ts-apikey,env:TS_API_KEY" placeholder:"KEY"`
-	TailscaleAuthKey     string           `arg:"--ts-authkey,env:TS_AUTHKEY" placeholder:"KEY"`
-	TailscaleOAuthID     string           `arg:"--ts-oauth-id,env:TS_OAUTH_ID" placeholder:"ID"`
-	TailscaleOAuthSecret string           `arg:"--ts-oauth-secret,env:TS_OAUTH_SECRET" placeholder:"SECRET"`
-	TailscaleTailnet     string           `arg:"--ts-tailnet,env:TS_TAILNET" default:"-" placeholder:"TAILNET"`
-	TailscaleHostname    string           `arg:"--ts-hostname,env:TS_HOSTNAME" default:"tailscale_exporter" placeholder:"HOSTNAME"`
-	Verbose              bool             `arg:"-v,--verbose,env:TS_EXPORTER_VERBOSE" help:"Enable verbose logging"`
-	Version              bool             `arg:"-V,--version" help:"Print version information"`
-	Generate             *generateCommand `arg:"subcommand:generate"`
-	Serve                *serveCommand    `arg:"subcommand:serve"`
-}
-
 func main() {
 	if len(os.Args) == 1 || strings.HasPrefix(os.Args[1], "-") {
 		if mode := detectModeFromEnv(); mode != "" {
@@ -147,6 +123,30 @@ func main() {
 	}
 }
 
+type generateCommand struct {
+	Output             string  `arg:"-o,--output,env:TS_EXPORTER_OUTPUT" placeholder:"FILE"`
+	PushgatewayURL     url.URL `arg:"-p,--pushgateway-url,env:TS_EXPORTER_PUSHGATEWAY_URL" placeholder:"URL"`
+	PushgatewayRetries int     `arg:"-r,--pushgateway-retries,env:TS_EXPORTER_PUSHGATEWAY_RETRIES" default:"1" placeholder:"RETRIES"`
+}
+
+type serveCommand struct {
+	Addr     string        `arg:"-l,--listen,env:TS_EXPORTER_LISTEN" default:":9824" placeholder:"ADDRESS:PORT"`
+	Interval time.Duration `arg:"-i,--interval,env:TS_EXPORTER_INTERVAL" default:"15m" placeholder:"INTERVAL"`
+}
+
+type mainCommand struct {
+	TailscaleAPIKey      string           `arg:"--ts-apikey,env:TS_API_KEY" placeholder:"KEY"`
+	TailscaleAuthKey     string           `arg:"--ts-authkey,env:TS_AUTHKEY" placeholder:"KEY"`
+	TailscaleOAuthID     string           `arg:"--ts-oauth-id,env:TS_OAUTH_ID" placeholder:"ID"`
+	TailscaleOAuthSecret string           `arg:"--ts-oauth-secret,env:TS_OAUTH_SECRET" placeholder:"SECRET"`
+	TailscaleTailnet     string           `arg:"--ts-tailnet,env:TS_TAILNET" default:"-" placeholder:"TAILNET"`
+	TailscaleHostname    string           `arg:"--ts-hostname,env:TS_HOSTNAME" default:"tailscale_exporter" placeholder:"HOSTNAME"`
+	Verbose              bool             `arg:"-v,--verbose,env:TS_EXPORTER_VERBOSE" help:"Enable verbose logging"`
+	Version              bool             `arg:"-V,--version" help:"Print version information"`
+	Generate             *generateCommand `arg:"subcommand:generate"`
+	Serve                *serveCommand    `arg:"subcommand:serve"`
+}
+
 func detectModeFromEnv() string {
 	if os.Getenv("TS_EXPORTER_MODE") != "" {
 		return os.Getenv("TS_EXPORTER_MODE")
@@ -163,6 +163,53 @@ func detectModeFromEnv() string {
 	}
 
 	return ""
+}
+
+func loadCredential(value *string, fallbackCredName string) {
+	if value == nil || *value == "" {
+		return
+	}
+
+	if strings.HasPrefix(*value, "file:") {
+		data, err := os.ReadFile((*value)[5:])
+		if err != nil {
+			log.Printf("Error reading file %s: %v", (*value)[5:], err)
+			*value = ""
+			return
+		}
+		*value = strings.TrimSpace(string(data))
+		return
+	}
+
+	if strings.HasPrefix(*value, "cred:") {
+		if os.Getenv("CREDENTIALS_DIRECTORY") == "" {
+			log.Printf("Error reading credential %s: CREDENTIALS_DIRECTORY environment variable not set", (*value)[5:])
+			*value = ""
+			return
+		}
+		credName := (*value)[5:]
+		path := filepath.Join(os.Getenv("CREDENTIALS_DIRECTORY"), credName)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("Error reading credential %s from %s: %v", credName, path, err)
+			*value = ""
+			return
+		}
+		log.Printf("Loaded credential %s from %s", credName, path)
+		*value = strings.TrimSpace(string(data))
+		return
+	}
+
+	if os.Getenv("CREDENTIALS_DIRECTORY") != "" {
+		path := filepath.Join(os.Getenv("CREDENTIALS_DIRECTORY"), fallbackCredName)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return
+		}
+		log.Printf("Loaded credential %s from %s", fallbackCredName, path)
+		*value = strings.TrimSpace(string(data))
+		return
+	}
 }
 
 func runGenerate(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.Server, generateArgs *generateCommand) {
@@ -273,6 +320,20 @@ func runServe(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.S
 	log.Fatal(http.Serve(ln, nil))
 }
 
+func writeToStdout(reg *prometheus.Registry) error {
+	enc := expfmt.NewEncoder(os.Stdout, expfmt.NewFormat(expfmt.TypeTextPlain))
+	mfs, err := reg.Gather()
+	if err != nil {
+		return err
+	}
+	for _, mf := range mfs {
+		if err := enc.Encode(mf); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
 	if client == nil {
 		return fmt.Errorf("missing tailscale client")
@@ -313,75 +374,6 @@ func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
 	return nil
 }
 
-func deviceShortDomain(device tailscale.Device) (string, error) {
-	parts := strings.Split(device.Name, ".")
-	if len(parts) == 4 && parts[2] == "ts" && parts[3] == "net" {
-		return parts[0], nil
-	}
-	return "", fmt.Errorf("bad device name: %s", device.Name)
-}
-
-func writeToStdout(reg *prometheus.Registry) error {
-	enc := expfmt.NewEncoder(os.Stdout, expfmt.NewFormat(expfmt.TypeTextPlain))
-	mfs, err := reg.Gather()
-	if err != nil {
-		return err
-	}
-	for _, mf := range mfs {
-		if err := enc.Encode(mf); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func loadCredential(value *string, fallbackCredName string) {
-	if value == nil || *value == "" {
-		return
-	}
-
-	if strings.HasPrefix(*value, "file:") {
-		data, err := os.ReadFile((*value)[5:])
-		if err != nil {
-			log.Printf("Error reading file %s: %v", (*value)[5:], err)
-			*value = ""
-			return
-		}
-		*value = strings.TrimSpace(string(data))
-		return
-	}
-
-	if strings.HasPrefix(*value, "cred:") {
-		if os.Getenv("CREDENTIALS_DIRECTORY") == "" {
-			log.Printf("Error reading credential %s: CREDENTIALS_DIRECTORY environment variable not set", (*value)[5:])
-			*value = ""
-			return
-		}
-		credName := (*value)[5:]
-		path := filepath.Join(os.Getenv("CREDENTIALS_DIRECTORY"), credName)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			log.Printf("Error reading credential %s from %s: %v", credName, path, err)
-			*value = ""
-			return
-		}
-		log.Printf("Loaded credential %s from %s", credName, path)
-		*value = strings.TrimSpace(string(data))
-		return
-	}
-
-	if os.Getenv("CREDENTIALS_DIRECTORY") != "" {
-		path := filepath.Join(os.Getenv("CREDENTIALS_DIRECTORY"), fallbackCredName)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return
-		}
-		log.Printf("Loaded credential %s from %s", fallbackCredName, path)
-		*value = strings.TrimSpace(string(data))
-		return
-	}
-}
-
 func activationListener() (net.Listener, error) {
 	if os.Getenv("LISTEN_PID") != fmt.Sprintf("%d", os.Getpid()) {
 		return nil, fmt.Errorf("expected LISTEN_PID=%d, but was %s", os.Getpid(), os.Getenv("LISTEN_PID"))
@@ -410,4 +402,12 @@ func activationListener() (net.Listener, error) {
 	}
 
 	return ln, nil
+}
+
+func deviceShortDomain(device tailscale.Device) (string, error) {
+	parts := strings.Split(device.Name, ".")
+	if len(parts) == 4 && parts[2] == "ts" && parts[3] == "net" {
+		return parts[0], nil
+	}
+	return "", fmt.Errorf("bad device name: %s", device.Name)
 }
