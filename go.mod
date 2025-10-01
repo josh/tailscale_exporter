@@ -1,12 +1,12 @@
 module github.com/josh/tailscale_exporter
 
-go 1.25.1
+go 1.24.4
 
 require (
 	github.com/alexflint/go-arg v1.6.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.66.1
-	tailscale.com v1.88.3
+	tailscale.com v1.86.5
 	tailscale.com/client/tailscale/v2 v2.0.0-20250721135607-5f581daaece7
 )
 
