@@ -377,7 +377,12 @@ func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
 		if !device.KeyExpiryDisabled {
 			deviceExpiry.With(prometheus.Labels{"name": name, "address": address, "owner": owner}).Set(float64(device.Expires.Unix()))
 		}
-		deviceLastSeen.With(prometheus.Labels{"name": name, "address": address, "owner": owner}).Set(float64(device.LastSeen.Unix()))
+
+		lastSeen := time.Now().Unix()
+		if !device.LastSeen.IsZero() {
+			lastSeen = device.LastSeen.Unix()
+		}
+		deviceLastSeen.With(prometheus.Labels{"name": name, "address": address, "owner": owner}).Set(float64(lastSeen))
 
 		updateAvailable := 0.0
 		if device.UpdateAvailable {
