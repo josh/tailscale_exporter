@@ -7,7 +7,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.2
 	tailscale.com v1.90.6
-	tailscale.com/client/tailscale/v2 v2.0.0-20250721135607-5f581daaece7
+	tailscale.com/client/tailscale/v2 v2.3.0
 )
 
 require (
