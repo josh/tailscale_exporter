@@ -37,14 +37,6 @@ export TS_OAUTH_ID=your-oauth-id
 export TS_OAUTH_SECRET=your-oauth-secret
 ```
 
-### Auth Key
-
-```bash
---ts-authkey=tskey-auth-xxxxx
-# or
-export TS_AUTHKEY=tskey-auth-xxxxx
-```
-
 ## Usage
 
 ### Serve Mode
@@ -60,7 +52,6 @@ tailscale_exporter serve [options]
 - `-l, --listen` - Address to listen on (default: `:9824`)
 - `-i, --interval` - Metrics collection interval (default: `15m`)
 - `--ts-tailnet` - Tailnet to query (default: `-` for your default tailnet)
-- `--ts-hostname` - Hostname for the exporter's Tailscale node (default: `tailscale_exporter`)
 - `-v, --verbose` - Enable verbose logging
 
 Metrics will be available at `http://localhost:9824/metrics`
@@ -110,11 +101,9 @@ All CLI options can be configured via environment variables:
 **Authentication:**
 
 - `TS_API_KEY` - Tailscale API key
-- `TS_AUTHKEY` - Tailscale auth key
 - `TS_OAUTH_ID` - OAuth client ID
 - `TS_OAUTH_SECRET` - OAuth client secret
 - `TS_TAILNET` - Tailnet to query
-- `TS_HOSTNAME` - Hostname for exporter's Tailscale node
 
 **Serve Mode:**
 

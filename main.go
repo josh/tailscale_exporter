@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/prometheus/common/expfmt"
 	"tailscale.com/client/tailscale/v2"
-	"tailscale.com/tsnet"
 )
 
 // constants settable at build time
@@ -80,9 +79,6 @@ func main() {
 	if args.TailscaleAPIKey == "" {
 		args.TailscaleAPIKey = getTailscaleAPIKeyToken()
 	}
-	if args.TailscaleAuthKey == "" {
-		args.TailscaleAuthKey = getTailscaleAuthKeyToken()
-	}
 	if args.TailscaleOAuthID == "" {
 		args.TailscaleOAuthID = getTailscaleOAuthIDToken()
 	}
@@ -107,23 +103,11 @@ func main() {
 		}
 	}
 
-	var tsServer *tsnet.Server
-	if args.TailscaleAuthKey != "" && args.TailscaleHostname != "" {
-		tsServer = new(tsnet.Server)
-		tsServer.Hostname = args.TailscaleHostname
-		tsServer.Ephemeral = args.Generate != nil
-		tsServer.AuthKey = args.TailscaleAuthKey
-		if args.Verbose {
-			tsServer.Logf = log.New(os.Stderr, fmt.Sprintf("[tsnet:%s] ", tsServer.Hostname), log.LstdFlags).Printf
-			tsServer.UserLogf = log.New(os.Stderr, fmt.Sprintf("[tsnet:%s] ", tsServer.Hostname), log.LstdFlags).Printf
-		}
-	}
-
 	switch subargs := p.Subcommand().(type) {
 	case *generateCommand:
-		runGenerate(ctx, tsClient, tsServer, subargs)
+		runGenerate(ctx, tsClient, subargs)
 	case *serveCommand:
-		runServe(ctx, tsClient, tsServer, subargs)
+		runServe(ctx, tsClient, subargs)
 	default:
 		p.WriteHelp(os.Stdout)
 		os.Exit(1)
@@ -143,11 +127,9 @@ type serveCommand struct {
 
 type mainCommand struct {
 	TailscaleAPIKey      string           `arg:"--ts-apikey,env:TS_API_KEY" placeholder:"KEY"`
-	TailscaleAuthKey     string           `arg:"--ts-authkey,env:TS_AUTHKEY" placeholder:"KEY"`
 	TailscaleOAuthID     string           `arg:"--ts-oauth-id,env:TS_OAUTH_ID" placeholder:"ID"`
 	TailscaleOAuthSecret string           `arg:"--ts-oauth-secret,env:TS_OAUTH_SECRET" placeholder:"SECRET"`
 	TailscaleTailnet     string           `arg:"--ts-tailnet,env:TS_TAILNET" default:"-" placeholder:"TAILNET"`
-	TailscaleHostname    string           `arg:"--ts-hostname,env:TS_HOSTNAME" default:"tailscale_exporter" placeholder:"HOSTNAME"`
 	Verbose              bool             `arg:"-v,--verbose,env:TS_EXPORTER_VERBOSE" help:"Enable verbose logging"`
 	Version              bool             `arg:"-V,--version" help:"Print version information"`
 	Generate             *generateCommand `arg:"subcommand:generate"`
@@ -201,16 +183,6 @@ func getTailscaleAPIKeyToken() string {
 	return readSystemdCredential("TS_API_KEY", "TS_APIKEY", "ts-api-key", "ts-apikey")
 }
 
-func getTailscaleAuthKeyToken() string {
-	if authKey := os.Getenv("TS_AUTH_KEY"); authKey != "" {
-		return authKey
-	} else if authKey := os.Getenv("TS_AUTHKEY"); authKey != "" {
-		return authKey
-	}
-
-	return readSystemdCredential("TS_AUTH_KEY", "TS_AUTHKEY", "ts-auth-key", "ts-authkey")
-}
-
 func getTailscaleOAuthIDToken() string {
 	if oauthID := os.Getenv("TS_OAUTH_ID"); oauthID != "" {
 		return oauthID
@@ -227,7 +199,7 @@ func getTailscaleOAuthSecretToken() string {
 	return readSystemdCredential("TS_OAUTH_SECRET", "ts-oauth-secret")
 }
 
-func runGenerate(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.Server, generateArgs *generateCommand) {
+func runGenerate(ctx context.Context, tsClient *tailscale.Client, generateArgs *generateCommand) {
 	if tsClient == nil {
 		log.Fatalf("tailscale api not configured")
 	}
@@ -252,22 +224,7 @@ func runGenerate(ctx context.Context, tsClient *tailscale.Client, tsServer *tsne
 	}
 
 	if generateArgs.PushgatewayURL.String() != "" {
-		pushHTTPClient := http.DefaultClient
-
-		if tsServer != nil {
-			log.Printf("Starting Tailscale server")
-			if err := tsServer.Start(); err != nil {
-				log.Fatalf("Error starting Tailscale server: %v", err)
-			}
-			defer func() {
-				if err := tsServer.Close(); err != nil {
-					log.Printf("Error closing Tailscale server: %v", err)
-				}
-			}()
-			pushHTTPClient = tsServer.HTTPClient()
-		}
-
-		pusher := push.New(generateArgs.PushgatewayURL.String(), "tailscale").Client(pushHTTPClient).Gatherer(registry)
+		pusher := push.New(generateArgs.PushgatewayURL.String(), "tailscale").Client(http.DefaultClient).Gatherer(registry)
 		var err error
 		for i := 1; i < generateArgs.PushgatewayRetries; i++ {
 			if err = pusher.Push(); err == nil {
@@ -282,7 +239,7 @@ func runGenerate(ctx context.Context, tsClient *tailscale.Client, tsServer *tsne
 	}
 }
 
-func runServe(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.Server, serveArgs *serveCommand) {
+func runServe(ctx context.Context, tsClient *tailscale.Client, serveArgs *serveCommand) {
 	if tsClient == nil {
 		log.Fatalf("tailscale api not configured")
 	}
@@ -301,24 +258,10 @@ func runServe(ctx context.Context, tsClient *tailscale.Client, tsServer *tsnet.S
 		}
 	}()
 
-	if tsServer != nil {
-		log.Printf("Starting Tailscale server")
-		if err := tsServer.Start(); err != nil {
-			log.Fatalf("Error starting Tailscale server: %v", err)
-		}
-		defer func() {
-			if err := tsServer.Close(); err != nil {
-				log.Printf("Error closing Tailscale server: %v", err)
-			}
-		}()
-	}
-
 	var ln net.Listener
 	var err error
 	if os.Getenv("LISTEN_FDS") == "1" {
 		ln, err = activationListener()
-	} else if tsServer != nil {
-		ln, err = tsServer.Listen("tcp", serveArgs.Addr)
 	} else {
 		ln, err = net.Listen("tcp", serveArgs.Addr)
 	}
