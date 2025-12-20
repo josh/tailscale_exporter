@@ -22,7 +22,7 @@ import (
 
 // constants settable at build time
 var (
-	Version = "1.0.2"
+	Version = "1.1.0"
 )
 
 var (
