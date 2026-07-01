@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/alexflint/go-arg v1.6.1
 	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/common v0.68.0
+	github.com/prometheus/common v0.69.0
 	tailscale.com/client/tailscale/v2 v2.10.1
 )
 
@@ -20,6 +20,6 @@ require (
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
