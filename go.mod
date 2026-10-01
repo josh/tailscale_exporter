@@ -6,7 +6,7 @@ require (
 	github.com/alexflint/go-arg v1.6.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/common v0.72.0
-	tailscale.com/client/tailscale/v2 v2.10.1
+	tailscale.com/client/tailscale/v2 v2.11.0
 )
 
 require (
