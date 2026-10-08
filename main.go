@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,7 +34,7 @@ var (
 			Name: "tailscale_devices_expiry_time",
 			Help: "The expiry time of devices authentication",
 		},
-		[]string{"name", "address", "owner"},
+		[]string{"name", "address", "owner", "ephemeral"},
 	)
 
 	deviceLastSeen = prometheus.NewGaugeVec(
@@ -41,7 +42,7 @@ var (
 			Name: "tailscale_devices_last_seen",
 			Help: "The last time the device was active",
 		},
-		[]string{"name", "address", "owner"},
+		[]string{"name", "address", "owner", "ephemeral"},
 	)
 
 	deviceUpdateAvailable = prometheus.NewGaugeVec(
@@ -49,7 +50,7 @@ var (
 			Name: "tailscale_devices_update_available",
 			Help: "If the Tailscale device has a client update available",
 		},
-		[]string{"name", "address", "owner"},
+		[]string{"name", "address", "owner", "ephemeral"},
 	)
 )
 
@@ -326,22 +327,23 @@ func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
 		} else {
 			owner = strings.Join(device.Tags, ",")
 		}
+		ephemeral := strconv.FormatBool(device.IsEphemeral)
 
 		if !device.KeyExpiryDisabled {
-			deviceExpiry.With(prometheus.Labels{"name": name, "address": address, "owner": owner}).Set(float64(device.Expires.Unix()))
+			deviceExpiry.With(prometheus.Labels{"name": name, "address": address, "owner": owner, "ephemeral": ephemeral}).Set(float64(device.Expires.Unix()))
 		}
 
 		lastSeen := time.Now().Unix()
 		if !device.LastSeen.IsZero() {
 			lastSeen = device.LastSeen.Unix()
 		}
-		deviceLastSeen.With(prometheus.Labels{"name": name, "address": address, "owner": owner}).Set(float64(lastSeen))
+		deviceLastSeen.With(prometheus.Labels{"name": name, "address": address, "owner": owner, "ephemeral": ephemeral}).Set(float64(lastSeen))
 
 		updateAvailable := 0.0
 		if device.UpdateAvailable {
 			updateAvailable = 1.0
 		}
-		deviceUpdateAvailable.With(prometheus.Labels{"name": name, "address": address, "owner": owner}).Set(updateAvailable)
+		deviceUpdateAvailable.With(prometheus.Labels{"name": name, "address": address, "owner": owner, "ephemeral": ephemeral}).Set(updateAvailable)
 	}
 
 	return nil

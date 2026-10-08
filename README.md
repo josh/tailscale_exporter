@@ -15,6 +15,7 @@ All metrics include labels:
 - `name` - Device hostname (short domain)
 - `address` - Device IP address
 - `owner` - Device owner (user:username or tag list)
+- `ephemeral` - Whether the device is ephemeral (true or false)
 
 ## Authentication
 
