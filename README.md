@@ -10,7 +10,7 @@ The exporter collects the following metrics:
 - **`tailscale_devices_last_seen`** - The last time the device was active (Unix timestamp)
 - **`tailscale_devices_update_available`** - Whether the Tailscale device has a client update available (0 or 1)
 
-All metrics include labels:
+All device metrics include labels:
 
 - `name` - Device hostname (short domain)
 - `address` - Device IP address

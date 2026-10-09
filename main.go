@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -52,12 +53,30 @@ var (
 		},
 		[]string{"name", "address", "owner", "ephemeral"},
 	)
+
+	lastSuccess = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "tailscale_exporter_last_success_timestamp_seconds",
+			Help: "Unix time of the last successful device update.",
+		},
+	)
+
+	updateErrors = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "tailscale_exporter_errors_total",
+			Help: "Number of failed device updates.",
+		},
+	)
+
+	metricsMu sync.RWMutex
 )
 
 func init() {
 	registry.MustRegister(deviceExpiry)
 	registry.MustRegister(deviceLastSeen)
 	registry.MustRegister(deviceUpdateAvailable)
+	registry.MustRegister(lastSuccess)
+	registry.MustRegister(updateErrors)
 }
 
 func main() {
@@ -285,7 +304,12 @@ func runServe(ctx context.Context, tsClient *tailscale.Client, serveArgs *serveC
 		}
 	}()
 
-	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{Registry: registry}))
+	metricsHandler := promhttp.HandlerFor(registry, promhttp.HandlerOpts{Registry: registry})
+	http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		metricsMu.RLock()
+		defer metricsMu.RUnlock()
+		metricsHandler.ServeHTTP(w, r)
+	})
 	log.Fatal(http.Serve(ln, nil))
 }
 
@@ -310,8 +334,16 @@ func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
 
 	devices, err := client.Devices().List(ctx)
 	if err != nil {
+		updateErrors.Inc()
 		return err
 	}
+
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+
+	deviceExpiry.Reset()
+	deviceLastSeen.Reset()
+	deviceUpdateAvailable.Reset()
 
 	for _, device := range devices {
 		name, err := deviceShortDomain(device)
@@ -346,6 +378,7 @@ func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
 		deviceUpdateAvailable.With(prometheus.Labels{"name": name, "address": address, "owner": owner, "ephemeral": ephemeral}).Set(updateAvailable)
 	}
 
+	lastSuccess.SetToCurrentTime()
 	return nil
 }
 
