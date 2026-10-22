@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -19,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/prometheus/common/expfmt"
-	"tailscale.com/client/tailscale/v2"
 )
 
 // constants settable at build time
@@ -106,20 +107,13 @@ func main() {
 		args.TailscaleOAuthSecret = getTailscaleOAuthSecretToken()
 	}
 
-	var tsClient *tailscale.Client
-	if args.TailscaleAPIKey != "" {
-		tsClient = &tailscale.Client{
-			Tailnet: args.TailscaleTailnet,
-			APIKey:  args.TailscaleAPIKey,
-		}
-	} else if args.TailscaleOAuthID != "" && args.TailscaleOAuthSecret != "" {
-		tsClient = &tailscale.Client{
-			Tailnet: args.TailscaleTailnet,
-			HTTP: tailscale.OAuthConfig{
-				ClientID:     args.TailscaleOAuthID,
-				ClientSecret: args.TailscaleOAuthSecret,
-				Scopes:       []string{"devices:core:read"},
-			}.HTTPClient(),
+	var tsClient *tailscaleClient
+	if args.TailscaleAPIKey != "" || (args.TailscaleOAuthID != "" && args.TailscaleOAuthSecret != "") {
+		tsClient = &tailscaleClient{
+			tailnet:     args.TailscaleTailnet,
+			apiKey:      args.TailscaleAPIKey,
+			oauthID:     args.TailscaleOAuthID,
+			oauthSecret: args.TailscaleOAuthSecret,
 		}
 	}
 
@@ -229,7 +223,7 @@ func getTailscaleOAuthSecretToken() string {
 	return readSystemdCredential("TS_OAUTH_SECRET", "ts-oauth-secret")
 }
 
-func runGenerate(ctx context.Context, tsClient *tailscale.Client, generateArgs *generateCommand) {
+func runGenerate(ctx context.Context, tsClient *tailscaleClient, generateArgs *generateCommand) {
 	if tsClient == nil {
 		log.Fatalf("tailscale api not configured")
 	}
@@ -269,7 +263,7 @@ func runGenerate(ctx context.Context, tsClient *tailscale.Client, generateArgs *
 	}
 }
 
-func runServe(ctx context.Context, tsClient *tailscale.Client, serveArgs *serveCommand) {
+func runServe(ctx context.Context, tsClient *tailscaleClient, serveArgs *serveCommand) {
 	if tsClient == nil {
 		log.Fatalf("tailscale api not configured")
 	}
@@ -327,12 +321,12 @@ func writeToStdout(reg *prometheus.Registry) error {
 	return nil
 }
 
-func gatherMetrics(ctx context.Context, client *tailscale.Client) error {
+func gatherMetrics(ctx context.Context, client *tailscaleClient) error {
 	if client == nil {
 		return fmt.Errorf("missing tailscale client")
 	}
 
-	devices, err := client.Devices().List(ctx)
+	devices, err := client.listDevices(ctx)
 	if err != nil {
 		updateErrors.Inc()
 		return err
@@ -412,10 +406,105 @@ func activationListener() (net.Listener, error) {
 	return ln, nil
 }
 
-func deviceShortDomain(device tailscale.Device) (string, error) {
+func deviceShortDomain(device device) (string, error) {
 	parts := strings.Split(device.Name, ".")
 	if len(parts) == 4 && parts[2] == "ts" && parts[3] == "net" {
 		return parts[0], nil
 	}
 	return "", fmt.Errorf("bad device name: %s", device.Name)
+}
+
+type tailscaleClient struct {
+	tailnet     string
+	apiKey      string
+	oauthID     string
+	oauthSecret string
+}
+
+var httpClient = &http.Client{Timeout: time.Minute}
+
+type device struct {
+	Name              string   `json:"name"`
+	Addresses         []string `json:"addresses"`
+	User              string   `json:"user"`
+	Tags              []string `json:"tags"`
+	IsEphemeral       bool     `json:"isEphemeral"`
+	KeyExpiryDisabled bool     `json:"keyExpiryDisabled"`
+	Expires           apiTime  `json:"expires"`
+	LastSeen          apiTime  `json:"lastSeen"`
+	UpdateAvailable   bool     `json:"updateAvailable"`
+}
+
+type apiTime struct {
+	time.Time
+}
+
+func (t *apiTime) UnmarshalJSON(data []byte) error {
+	if string(data) == `""` {
+		return nil
+	}
+	return json.Unmarshal(data, &t.Time)
+}
+
+func (c *tailscaleClient) listDevices(ctx context.Context) ([]device, error) {
+	u := "https://api.tailscale.com/api/v2/tailnet/" + url.PathEscape(c.tailnet) + "/devices"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+
+	if c.apiKey != "" {
+		req.SetBasicAuth(c.apiKey, "")
+	} else {
+		token, err := c.oauthToken(ctx)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	var out struct {
+		Devices []device `json:"devices"`
+	}
+	if err := c.do(req, &out); err != nil {
+		return nil, err
+	}
+	return out.Devices, nil
+}
+
+func (c *tailscaleClient) oauthToken(ctx context.Context) (string, error) {
+	form := url.Values{
+		"grant_type":    {"client_credentials"},
+		"client_id":     {c.oauthID},
+		"client_secret": {c.oauthSecret},
+		"scope":         {"devices:core:read"},
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.tailscale.com/api/v2/oauth/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	var out struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := c.do(req, &out); err != nil {
+		return "", fmt.Errorf("oauth token: %w", err)
+	}
+	return out.AccessToken, nil
+}
+
+func (c *tailscaleClient) do(req *http.Request, out any) error {
+	req.Header.Set("User-Agent", "tailscale_exporter/"+Version)
+
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return fmt.Errorf("tailscale api: %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	return json.Unmarshal(body, out)
 }
