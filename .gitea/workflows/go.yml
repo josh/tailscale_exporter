@@ -4,9 +4,12 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-amd64
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -15,6 +18,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
       - name: Build
-        run: |
-          go build
+        run: go build
+
+      - name: Print version
+        run: ./tailscale_exporter --version
